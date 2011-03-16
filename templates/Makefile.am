@@ -8,4 +8,5 @@ templates_SCRIPTS = \
 	lxc-natty \
 	lxc-fedora \
 	lxc-busybox \
-	lxc-sshd
+	lxc-sshd \
+	lxc-arch

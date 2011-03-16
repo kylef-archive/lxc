@@ -1,0 +1,159 @@
+#!/bin/bash
+
+# lxc: linux Container library
+
+# Author: Kyle Fuller <inbox@kylefuller.co.uk>
+
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation; either
+# version 2.1 of the License, or (at your option) any later version.
+
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# Lesser General Public License for more details.
+
+# You should have received a copy of the GNU Lesser General Public
+# License along with this library; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+
+install_arch()
+{
+    rootfs=$1
+
+    mkdir -p $rootfs/var/lib/pacman
+
+    # Install the core
+    pacman -Sy -r $rootfs
+
+    # Install base
+    pacman -S base -r $rootfs
+
+    return 0
+}
+
+configure_arch()
+{
+    rootfs=$1
+    hostname=$2
+
+    # Update the hostname
+    sed -i s/myhost/$hostname/ $rootfs/etc/rc.conf
+
+    # Set a root password
+    echo "root:root" | chroot $rootfs chpasswd
+    echo "Root password is 'root', please change !"
+
+    return 0
+}
+
+copy_configuration()
+{
+    path=$1
+    rootfs=$2
+    name=$3
+
+    cat <<EOF >> $path/config
+lxc.utsname = $name
+lxc.rootfs = $rootfs
+
+lxc.cgroup.devices.deny = a
+# /dev/null and zero
+lxc.cgroup.devices.allow = c 1:3 rwm
+lxc.cgroup.devices.allow = c 1:5 rwm
+# consoles
+lxc.cgroup.devices.allow = c 5:1 rwm
+lxc.cgroup.devices.allow = c 5:0 rwm
+lxc.cgroup.devices.allow = c 4:0 rwm
+lxc.cgroup.devices.allow = c 4:1 rwm
+# /dev/{,u}random
+lxc.cgroup.devices.allow = c 1:9 rwm
+lxc.cgroup.devices.allow = c 1:8 rwm
+lxc.cgroup.devices.allow = c 136:* rwm
+lxc.cgroup.devices.allow = c 5:2 rwm
+# rtc
+lxc.cgroup.devices.allow = c 254:0 rwm
+
+# mount points
+lxc.mount.entry=proc $rootfs/proc proc nodev,noexec,nosuid 0 0
+lxc.mount.entry=devpts $rootfs/dev/pts devpts defaults 0 0
+lxc.mount.entry=sysfs $rootfs/sys sysfs defaults  0 0
+EOF
+
+    if [ $? -ne 0 ]; then
+        echo "Failed to add configuration"
+        return 1
+    fi
+
+    return 0
+}
+
+usage()
+{
+    cat <<EOF
+$1 -h|--help -p|--path=<path> -n|--name=<name>
+EOF
+    return 0
+}
+
+options=$(getopt -o hp:n:c -l help,path:,name: -- "$@")
+if [ $? -ne 0 ]; then
+        usage $(basename $0)
+	exit 1
+fi
+eval set -- "$options"
+
+while true
+do
+    case "$1" in
+    -h|--help)      usage $0 && exit 0;;
+    -p|--path)      path=$2; shift 2;;
+	-n|--name)      name=$2; shift 2;;
+    --)             shift 1; break ;;
+    *)              break ;;
+    esac
+done
+
+type pacman
+if [ $? -ne 0 ]; then
+    echo "'pacman' command is missing"
+    exit 1
+fi
+
+if [ -z "$path" ]; then
+    echo "'path' parameter is required"
+    exit 1
+fi
+
+if [ -z "$name" ]; then
+    echo "'name' parameter is required"
+    exit 1
+fi
+
+if [ "$(id -u)" != "0" ]; then
+    echo "This script should be run as 'root'"
+    exit 1
+fi
+
+rootfs=$path/rootfs
+
+install_arch $rootfs
+if [ $? -ne 0 ]; then
+    echo "failed to install debian"
+    exit 1
+fi
+
+configure_arch $rootfs $name
+if [ $? -ne 0 ]; then
+    echo "failed to configure debian for a container"
+    exit 1
+fi
+
+copy_configuration $path $rootfs $name
+if [ $? -ne 0 ]; then
+    echo "failed write configuration file"
+    exit 1
+fi
+
+exit 0

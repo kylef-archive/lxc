@@ -145,6 +145,7 @@ AC_CONFIG_FILES([
 	templates/lxc-busybox
 	templates/lxc-fedora
 	templates/lxc-sshd
+	templates/lxc-arch
 
 	src/Makefile
 	src/lxc/Makefile
