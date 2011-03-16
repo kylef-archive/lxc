@@ -28,7 +28,7 @@ install_arch()
     pacman -Sy -r $rootfs
 
     # Install base
-    pacman -S base -r $rootfs
+    pacman -noconfirm -S base -r $rootfs
 
     return 0
 }
